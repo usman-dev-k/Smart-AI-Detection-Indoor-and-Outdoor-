@@ -1,7 +1,6 @@
 ultralytics
-opencv-python
-pytesseract
-sounddevice  # For real-time audio
-transformers  # For TTS
+gradio
 torch
-numpy<2.0
+opencv-python-headless
+Pillow
+gtts
