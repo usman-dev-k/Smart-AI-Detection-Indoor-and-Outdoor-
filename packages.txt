@@ -1,5 +1,5 @@
-libgl1-mesa-glx
-tesseract-ocr
-ffmpeg
-espeak
 libgl1
+tesseract-ocr
+libsm6
+libxext6
+ffmpeg
