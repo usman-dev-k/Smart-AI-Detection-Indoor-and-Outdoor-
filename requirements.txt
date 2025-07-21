@@ -1,9 +1,8 @@
 streamlit
-ultralytics
-numpy<2.0
-opencv-python-headless
-pillow
+opencv-python
 pytesseract
-av
-gtts
-streamlit-webrtc
+pyttsx3
+torch
+numpy
+Pillow
+numpy<2.0
