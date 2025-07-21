@@ -208,16 +208,19 @@ def main():
         # Enhanced STUN/TURN configuration
         rtc_config = {
             "iceServers": [
+                # Primary STUN (Google)
                 {"urls": "stun:stun.l.google.com:19302"},
+                
+                # Backup STUN servers
                 {"urls": "stun:stun1.l.google.com:19302"},
                 {"urls": "stun:stun2.l.google.com:19302"},
-                {"urls": "stun:stun3.l.google.com:19302"},
-                {"urls": "stun:stun4.l.google.com:19302"},
-                # Add TURN servers if you have credentials
+                {"urls": "stun:stun.iptel.org"},
+                
+                # Free TURN server (fallback)
                 # {
-                #     "urls": "turn:your-turn-server.com:5349",
-                #     "username": "your-username",
-                #     "credential": "your-password"
+                #     # "urls": "turn:numb.viagenie.ca",
+                #     # "username": "your-email@gmail.com",
+                #     # "credential": "your-password"
                 # }
             ]
         }
@@ -232,14 +235,20 @@ def main():
             4. Use a mobile hotspot if corporate network blocks STUN
             """)
         
-        webrtc_ctx = webrtc_streamer(
-            key=f"object-detection-{model_type}",  # Unique key per model type
-            mode=WebRtcMode.SENDRECV,
-            rtc_configuration=rtc_config,
-            media_stream_constraints={"video": True, "audio": False},
-            video_processor_factory=ObjectDetectionProcessor,
-            async_processing=True,
-        )
+            webrtc_ctx = webrtc_streamer(
+                key="object-detection",
+                mode=WebRtcMode.SENDRECV,
+                rtc_configuration=rtc_config,
+                media_stream_constraints={
+                    "video": {
+                        "width": {"ideal": 640},  # Lower resolution for mobile
+                        "height": {"ideal": 480}
+                    },
+                    "audio": False
+                },
+                video_processor_factory=ObjectDetectionProcessor,
+                async_processing=True,
+            )
         
         if webrtc_ctx.video_processor:
             webrtc_ctx.video_processor.load_model(model_type)
