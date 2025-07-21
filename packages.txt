@@ -2,3 +2,4 @@ libgl1-mesa-glx
 tesseract-ocr
 ffmpeg
 espeak
+libgl1
