@@ -13,8 +13,8 @@ st.set_page_config(layout="wide")
 st.title("📷 Smart Camera App")
 
 # Load models
-indoor_model = YOLO("indoor.pt")
-outdoor_model = YOLO("outdoor.pt")
+indoor_model = YOLO("models/indoor.pt")
+outdoor_model = YOLO("models/outdoor.pt")
 
 # Utility: TTS
 def text_to_speech(text):
