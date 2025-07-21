@@ -1,6 +1,10 @@
-ultralytics
-gradio
-torch
-opencv-python-headless
-Pillow
-gtts
+streamlit>=1.22
+streamlit-webrtc>=0.44
+ultralytics>=8.0
+torch>=2.0
+opencv-python>=4.7
+pyttsx3>=2.90
+pytesseract>=0.3.10
+Pillow>=9.5
+av>=10.0
+numpy>=1.24
