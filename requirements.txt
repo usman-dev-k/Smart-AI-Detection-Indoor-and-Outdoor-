@@ -1,0 +1,7 @@
+ultralytics
+opencv-python
+pytesseract
+sounddevice  # For real-time audio
+transformers  # For TTS
+torch
+numpy<2.0
