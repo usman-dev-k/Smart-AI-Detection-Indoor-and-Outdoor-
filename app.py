@@ -13,8 +13,8 @@ import av
 # === Load YOLO Models ===
 @st.cache_resource
 def load_models():
-    indoor_model = YOLO("indoor.pt")
-    outdoor_model = YOLO("outdoor.pt")
+    indoor_model = YOLO("models/indoor.pt")
+    outdoor_model = YOLO("models/outdoor.pt")
     return indoor_model, outdoor_model
 
 indoor_model, outdoor_model = load_models()
