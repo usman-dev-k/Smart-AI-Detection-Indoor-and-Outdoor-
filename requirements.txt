@@ -1,8 +1,7 @@
 ultralytics
-streamlit
 opencv-python
-numpy
 pytesseract
-pyttsx3
-pillow
+sounddevice  # For real-time audio
+transformers  # For TTS
+torch
 numpy<2.0
