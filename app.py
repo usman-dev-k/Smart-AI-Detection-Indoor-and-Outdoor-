@@ -1,76 +1,101 @@
 import streamlit as st
 import cv2
-from ultralytics import YOLO
-import numpy as np
-from gtts import gTTS
-import pytesseract
 from PIL import Image
+import numpy as np
+import pytesseract
+from gtts import gTTS
+from playsound import playsound
 import tempfile
+from ultralytics import YOLO
 import time
-
-# Streamlit UI setup
-st.set_page_config(page_title="Real-Time YOLO + OCR")
-st.title("🎯 Real-Time Object Detection + OCR")
 
 # Load models
 indoor_model = YOLO("models/indoor.pt")
 outdoor_model = YOLO("models/outdoor.pt")
 
-# Select model
-model_type = st.selectbox("Choose YOLO model:", ["Indoor", "Outdoor"])
-model = indoor_model if model_type == "Indoor" else outdoor_model
-
-# OCR flag
-enable_ocr = st.checkbox("Enable OCR separately", value=False)
-
-# Start camera
-start = st.button("Start Real-Time Detection")
-
-frame_placeholder = st.empty()
+# Helper functions
+def speak_text(text):
+    if not text.strip():
+        return
+    tts = gTTS(text=text)
+    with tempfile.NamedTemporaryFile(delete=True, suffix=".mp3") as fp:
+        tts.save(fp.name)
+        playsound(fp.name)
 
 def detect_objects(frame, model):
     results = model(frame)
-    return results[0].plot()
+    for r in results:
+        boxes = r.boxes.xyxy
+        classes = r.boxes.cls
+        names = r.names
+        for i, box in enumerate(boxes):
+            x1, y1, x2, y2 = map(int, box)
+            label = names[int(classes[i])]
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+            speak_text(label)
+    return frame
 
-def run_ocr(frame):
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    text = pytesseract.image_to_string(gray)
+def run_ocr(image):
+    text = pytesseract.image_to_string(image)
     return text
 
-def speak_text(text):
-    if text.strip() == "":
-        st.warning("No text detected.")
-        return
-    tts = gTTS(text)
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
-        tts.save(fp.name)
-        st.audio(fp.name, format="audio/mp3")
+# Streamlit UI
+st.set_page_config(layout="wide")
+st.title("Smart Camera App")
 
-# Camera loop
-if start:
+tab1, tab2 = st.tabs(["📷 Real-Time Object Detection", "📖 OCR - Text to Speech"])
+
+# --- TAB 1: Object Detection ---
+with tab1:
+    st.header("Real-Time Object Detection")
+    detection_mode = st.radio("Select Mode", ["Indoor", "Outdoor"])
+
+    start_camera = st.button("Start Detection")
+
+    if start_camera:
+        model = indoor_model if detection_mode == "Indoor" else outdoor_model
+        cap = cv2.VideoCapture(0)
+
+        st_frame = st.empty()
+
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                st.error("Failed to access the webcam.")
+                break
+
+            frame = cv2.resize(frame, (640, 480))
+            frame = detect_objects(frame, model)
+            st_frame.image(frame, channels="BGR")
+
+            if st.button("Stop"):
+                cap.release()
+                break
+
+# --- TAB 2: OCR ---
+with tab2:
+    st.header("OCR - Click Image and Convert to Speech")
     cap = cv2.VideoCapture(0)
-    st.info("Press Stop or use Ctrl+C to quit")
+    st_camera = st.empty()
+    capture_btn = st.button("Click Picture")
 
-    while cap.isOpened():
+    if cap.isOpened():
         ret, frame = cap.read()
+        if ret:
+            st_camera.image(frame, channels="BGR")
+
+    if capture_btn:
         if not ret:
-            st.error("Failed to grab frame.")
-            break
+            st.error("Camera frame not available.")
+        else:
+            image = frame
+            st.image(image, caption="Captured Image", channels="BGR")
 
-        frame = cv2.flip(frame, 1)
-        output_frame = detect_objects(frame, model)
+            text = run_ocr(image)
+            st.text_area("Detected Text", text, height=200)
 
-        frame_placeholder.image(output_frame, channels="BGR", use_column_width=True)
-
-        # OCR
-        if enable_ocr:
-            text = run_ocr(frame)
-            st.text_area("📝 OCR Output", text, height=150)
+            st.success("Speaking Text...")
             speak_text(text)
-            time.sleep(3)  # pause to avoid TTS spamming
-
-        # Optional delay (streamlit needs time to render)
-        time.sleep(0.03)
 
     cap.release()
-    st.success("Camera stopped.")
