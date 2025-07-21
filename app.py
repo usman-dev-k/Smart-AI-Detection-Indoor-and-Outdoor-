@@ -6,7 +6,7 @@ import pytesseract
 from gtts import gTTS
 from ultralytics import YOLO
 import tempfile
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+from streamlit_webrtc import WebRtcMode, ClientSettings
 import av
 
 st.set_page_config(layout="wide")
@@ -58,10 +58,16 @@ with tab1:
     model_choice = st.radio("Choose model", ["Indoor", "Outdoor"], horizontal=True)
     selected_model = indoor_model if model_choice == "Indoor" else outdoor_model
 
+    RTC_CONFIGURATION = {
+    "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+    }
+    
     ctx = webrtc_streamer(
         key="realtime-od",
-        video_transformer_factory=lambda: ObjectDetectionTransformer(selected_model),
+        mode=WebRtcMode.SENDRECV,
+        rtc_configuration=RTC_CONFIGURATION,
         media_stream_constraints={"video": True, "audio": False},
+        video_processor_factory=lambda: ObjectDetectionTransformer(selected_model),
         async_processing=True
     )
 
