@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
 import av
@@ -10,7 +11,9 @@ import queue
 import time
 from PIL import Image
 import pytesseract
-import os
+
+# Fix Ultralytics config directory issue
+os.environ['YOLO_CONFIG_DIR'] = '/tmp'
 
 # Set Tesseract path (adjust for your environment)
 pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
@@ -26,12 +29,27 @@ if not os.path.exists(INDOOR_MODEL):
 if not os.path.exists(OUTDOOR_MODEL):
     st.error(f"Outdoor model not found at {OUTDOOR_MODEL}")
 
-# Initialize text-to-speech engine
+# Initialize text-to-speech engine with fallback
+tts_engine = None
 try:
     tts_engine = pyttsx3.init()
-    tts_engine.setProperty('rate', 150)
+    
+    # Handle voice initialization errors
+    try:
+        tts_engine.setProperty('rate', 150)
+    except Exception as e:
+        st.warning(f"Couldn't set speech rate: {str(e)}")
+    
+    # Try to set a working voice
+    voices = tts_engine.getProperty('voices')
+    if voices:
+        try:
+            tts_engine.setProperty('voice', voices[0].id)
+        except:
+            pass  # Use default voice if specific selection fails
 except Exception as e:
     st.error(f"Text-to-speech initialization failed: {str(e)}")
+    st.warning("Audio feedback will be disabled")
 
 # Audio feedback queue and lock
 audio_queue = queue.Queue()
@@ -40,6 +58,9 @@ last_spoken = {"text": "", "time": 0}
 
 def speak_text(text):
     """Thread-safe text-to-speech with cooldown"""
+    if tts_engine is None:
+        return
+    
     with audio_lock:
         current_time = time.time()
         # Prevent repeating the same text within 3 seconds
@@ -71,6 +92,8 @@ class ObjectDetectionProcessor(VideoProcessorBase):
         self.model_type = None
         self.last_detection_time = 0
         self.detection_cooldown = 2.0  # seconds
+        self.last_frame_time = time.time()
+        self.frame_skip = 2  # Process every 3rd frame
 
     def load_model(self, model_type):
         """Load appropriate YOLO model with caching"""
@@ -89,15 +112,27 @@ class ObjectDetectionProcessor(VideoProcessorBase):
 
     def recv(self, frame):
         """Process each video frame"""
+        current_time = time.time()
+        
+        # Skip frames for performance
+        if current_time - self.last_frame_time < 0.1:  # 10ms = ~100 FPS throttling
+            return frame
+        self.last_frame_time = current_time
+        
         if self.model is None:
             return frame
         
         img = frame.to_ndarray(format="bgr24")
+        
+        # Process every nth frame (frame skipping)
+        self.frame_counter = (self.frame_counter + 1) % self.frame_skip
+        if self.frame_counter != 0:
+            return av.VideoFrame.from_ndarray(img, format="bgr24")
+        
         results = self.model.track(img, persist=True, verbose=False)
         
         # Process detections
         detected_objects = set()
-        current_time = time.time()
         
         for result in results:
             if result.boxes is not None:
@@ -170,12 +205,35 @@ def main():
         st.header("Real-Time Object Detection")
         model_type = st.radio("Select Model:", ("outdoor", "indoor"), horizontal=True)
         
+        # Enhanced STUN/TURN configuration
         rtc_config = {
-            "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+            "iceServers": [
+                {"urls": "stun:stun.l.google.com:19302"},
+                {"urls": "stun:stun1.l.google.com:19302"},
+                {"urls": "stun:stun2.l.google.com:19302"},
+                {"urls": "stun:stun3.l.google.com:19302"},
+                {"urls": "stun:stun4.l.google.com:19302"},
+                # Add TURN servers if you have credentials
+                # {
+                #     "urls": "turn:your-turn-server.com:5349",
+                #     "username": "your-username",
+                #     "credential": "your-password"
+                # }
+            ]
         }
         
+        # Add a connection troubleshooting section
+        with st.expander("Connection Troubleshooting"):
+            st.markdown("""
+            **If the camera doesn't load:**
+            1. Refresh the page and allow camera permissions
+            2. Check your network firewall settings
+            3. Try a different browser (Chrome/Firefox work best)
+            4. Use a mobile hotspot if corporate network blocks STUN
+            """)
+        
         webrtc_ctx = webrtc_streamer(
-            key="object-detection",
+            key=f"object-detection-{model_type}",  # Unique key per model type
             mode=WebRtcMode.SENDRECV,
             rtc_configuration=rtc_config,
             media_stream_constraints={"video": True, "audio": False},
@@ -185,6 +243,7 @@ def main():
         
         if webrtc_ctx.video_processor:
             webrtc_ctx.video_processor.load_model(model_type)
+            webrtc_ctx.video_processor.frame_counter = 0
             
         st.info("""
         **Mobile Instructions:**
@@ -192,9 +251,19 @@ def main():
         2. Point camera at objects
         3. Audio feedback will announce detections
         """)
+        
+        # Add a reset button for connection issues
+        if st.button("Reconnect Camera"):
+            st.experimental_rerun()
     
     with tab2:
         ocr_to_speech()
+    
+    # Cleanup on app exit
+    if not st.session_state.get('_is_running', False):
+        audio_queue.put(None)
+        audio_thread.join(timeout=1.0)
+        st.session_state._is_running = True
 
 if __name__ == "__main__":
     main()
