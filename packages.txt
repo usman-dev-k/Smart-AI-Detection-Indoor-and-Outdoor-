@@ -3,5 +3,3 @@ tesseract-ocr
 libsm6
 libxext6
 ffmpeg
-espeak
-libespeak-dev
