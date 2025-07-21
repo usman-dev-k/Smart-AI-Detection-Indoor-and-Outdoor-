@@ -5,10 +5,8 @@ import pytesseract
 import pyttsx3
 import threading
 import time
-import torch
-from models.experimental import attempt_load
-from utils.general import non_max_suppression, scale_coords
-from utils.plots import plot_one_box
+from ultralytics import YOLO
+from PIL import Image
 
 # Initialize TTS engine once
 if 'tts_engine' not in st.session_state:
@@ -18,30 +16,7 @@ if 'tts_engine' not in st.session_state:
 # Load models with caching
 @st.cache_resource
 def load_model(model_path):
-    return attempt_load(model_path, map_location='cpu')
-
-def detect_objects(model, frame, conf_thres=0.5):
-    # Preprocess
-    img = cv2.resize(frame, (640, 640))
-    img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB
-    img = torch.from_numpy(np.ascontiguousarray(img)).float() / 255.0
-    if img.ndimension() == 3:
-        img = img.unsqueeze(0)
-    
-    # Inference
-    pred = model(img)[0]
-    pred = non_max_suppression(pred, conf_thres, 0.45)
-    
-    # Process detections
-    detections = []
-    for det in pred:
-        if len(det):
-            det[:, :4] = scale_coords(img.shape[2:], det[:, :4], frame.shape).round()
-            for *xyxy, conf, cls in reversed(det):
-                label = f'{model.names[int(cls)]} {conf:.2f}'
-                detections.append((xyxy, label.split()[0], conf))  # Store only object name
-    
-    return detections
+    return YOLO(model_path)
 
 def speak(text):
     st.session_state.tts_engine.say(text)
@@ -82,19 +57,34 @@ def main():
                     st.error("Failed to access camera")
                     break
                 
-                # Detection
-                detections, frame = detect_objects(model, frame, confidence), cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                # Perform detection with YOLOv8
+                results = model.predict(frame, conf=confidence, verbose=False)
                 
-                # Draw boxes and collect objects
+                # Get detections
                 detected_items = set()
-                for (x1, y1, x2, y2), name, conf in detections:
-                    cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-                    cv2.putText(frame, f"{name} {conf:.2f}", (int(x1), int(y1)-10), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                    detected_items.add(name)
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                
+                for result in results:
+                    boxes = result.boxes
+                    for box in boxes:
+                        # Get bounding box coordinates
+                        x1, y1, x2, y2 = box.xyxy[0].tolist()
+                        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+                        
+                        # Get class name and confidence
+                        class_id = int(box.cls[0])
+                        class_name = model.names[class_id]
+                        conf = float(box.conf[0])
+                        
+                        # Draw bounding box and label
+                        cv2.rectangle(frame_rgb, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                        cv2.putText(frame_rgb, f"{class_name} {conf:.2f}", (x1, y1-10), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                        
+                        detected_items.add(class_name)
                 
                 # Show frame
-                video_placeholder.image(frame, channels="RGB")
+                video_placeholder.image(frame_rgb, channels="RGB")
                 
                 # Audio feedback
                 if detected_items and (time.time() - last_spoken) > cooldown:
@@ -137,11 +127,9 @@ def main():
                 text = pytesseract.image_to_string(thresh)
                 st.session_state.extracted_text = text.strip()
             
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.session_state.captured_image is not None:
-                    st.image(st.session_state.captured_image, caption="Captured Image")
-            with col2:
+            if st.session_state.captured_image is not None:
+                st.image(st.session_state.captured_image, caption="Captured Image")
+            if st.session_state.extracted_text:
                 st.text_area("Extracted Text", st.session_state.extracted_text, height=200)
         
         if speak_btn and st.session_state.extracted_text:
