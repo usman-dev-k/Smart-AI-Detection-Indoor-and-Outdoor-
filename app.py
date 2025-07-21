@@ -23,18 +23,19 @@ OUTDOOR_MODEL = os.path.join(MODEL_DIR, "outdoor.pt")
 
 # --- WebRTC Config (STUN only) ---
 def get_rtc_config():
-    """RTC configuration with public STUN servers only"""
+    """RTC configuration using the verified IPv4 STUN server"""
     return {
         "iceServers": [
-            # Primary STUN servers
-            {"urls": "stun:stun.l.google.com:19302"},
-            {"urls": "stun:stun1.l.google.com:19302"},
-            {"urls": "stun:stun2.l.google.com:19302"},
-            {"urls": "stun:stun.iptel.org"},
+            # Primary: Your working IPv4 STUN (from nc -4zuv test)
+            {"urls": "stun:74.125.250.129:19302"},
             
-            # Fallback STUN servers
-            {"urls": "stun:stun.services.mozilla.com:3478"},
-            {"urls": "stun:stun.stunprotocol.org:3478"}
+            # Fallback 1: Other Google STUN IPs (IPv4)
+            {"urls": "stun:142.250.190.129:19302"},  # stun1.l.google.com
+            {"urls": "stun:142.250.191.129:19302"},  # stun2.l.google.com
+            
+            # Fallback 2: Other reliable IPv4 STUN servers
+            {"urls": "stun:64.233.177.127:19302"},  # Alternate Google
+            {"urls": "stun:193.17.47.1:3478"}       # stun.voip.blackberry.com
         ]
     }
 
