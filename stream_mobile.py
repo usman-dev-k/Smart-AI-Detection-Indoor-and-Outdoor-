@@ -13,7 +13,7 @@ import base64
 # ========== Load Models ==========
 tts_model = TTS(model_name="tts_models/en/ljspeech/glow-tts", progress_bar=False)
 
-INDOOR_MODEL_PATH = "/home/sag_umt/yolo_project/yolov8s.pt"
+INDOOR_MODEL_PATH = "/home/sag_umt/Music/indoor_best_weights/weights/best.pt"
 OUTDOOR_MODEL_PATH = "/home/sag_umt/Music/outdoor_best_weights/weights/best.pt"
 
 indoor_model = YOLO(INDOOR_MODEL_PATH)
