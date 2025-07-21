@@ -5,15 +5,15 @@ import av
 import cv2
 import numpy as np
 from ultralytics import YOLO
-import pyttsx3
 import threading
 import queue
 import time
 from PIL import Image
 import pytesseract
+import subprocess  # For alternative TTS
 
 # --- Configuration ---
-os.environ['YOLO_CONFIG_DIR'] = '/tmp'  # Fix for Streamlit Cloud
+os.environ['YOLO_CONFIG_DIR'] = '/tmp'
 pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
 
 # Model paths
@@ -21,53 +21,42 @@ MODEL_DIR = "models"
 INDOOR_MODEL = os.path.join(MODEL_DIR, "indoor.pt")
 OUTDOOR_MODEL = os.path.join(MODEL_DIR, "outdoor.pt")
 
-# --- WebRTC Config (STUN only) ---
-def get_rtc_config():
-    """RTC configuration using the verified IPv4 STUN server"""
-    return {
-        "iceServers": [
-            # Primary: Your working IPv4 STUN (from nc -4zuv test)
-            {"urls": "stun:74.125.250.129:19302"},
+# --- Audio Setup (Platform Independent) ---
+class AudioSystem:
+    def __init__(self):
+        self.queue = queue.Queue()
+        self.lock = threading.Lock()
+        self.last_spoken = {"text": "", "time": 0}
+    
+    def speak(self, text):
+        """Platform-independent text-to-speech"""
+        if not text.strip():
+            return
             
-            # Fallback 1: Other Google STUN IPs (IPv4)
-            {"urls": "stun:142.250.190.129:19302"},  # stun1.l.google.com
-            {"urls": "stun:142.250.191.129:19302"},  # stun2.l.google.com
-            
-            # Fallback 2: Other reliable IPv4 STUN servers
-            {"urls": "stun:64.233.177.127:19302"},  # Alternate Google
-            {"urls": "stun:193.17.47.1:3478"}       # stun.voip.blackberry.com
-        ]
-    }
+        with self.lock:
+            current_time = time.time()
+            if text != self.last_spoken["text"] or current_time - self.last_spoken["time"] > 3:
+                try:
+                    # Linux/macOS
+                    if os.name == 'posix':
+                        subprocess.run(['espeak', text], check=False)
+                    # Windows
+                    else:
+                        subprocess.run(['powershell', '-Command', f'Add-Type -AssemblyName System.Speech; $speak = New-Object System.Speech.Synthesis.SpeechSynthesizer; $speak.Speak("{text}")'], check=False)
+                    
+                    self.last_spoken = {"text": text, "time": current_time}
+                except Exception as e:
+                    st.error(f"Audio failed: {str(e)}")
 
-# --- Audio Setup ---
-tts_engine = pyttsx3.init()
-tts_engine.setProperty('rate', 150)
-
-audio_queue = queue.Queue()
-audio_lock = threading.Lock()
-last_spoken = {"text": "", "time": 0}
-
-def speak_text(text):
-    """Thread-safe text-to-speech with cooldown"""
-    with audio_lock:
-        current_time = time.time()
-        if text and (text != last_spoken["text"] or current_time - last_spoken["time"] > 3):
-            try:
-                tts_engine.say(text)
-                tts_engine.runAndWait()
-                last_spoken["text"] = text
-                last_spoken["time"] = current_time
-            except Exception as e:
-                st.error(f"Speech error: {str(e)}")
+audio_system = AudioSystem()
 
 def audio_worker():
-    """Background audio processor"""
     while True:
-        text = audio_queue.get()
+        text = audio_system.queue.get()
         if text is None:
             break
-        speak_text(text)
-        audio_queue.task_done()
+        audio_system.speak(text)
+        audio_system.queue.task_done()
 
 audio_thread = threading.Thread(target=audio_worker, daemon=True)
 audio_thread.start()
@@ -80,7 +69,7 @@ class ObjectDetectionProcessor(VideoProcessorBase):
         self.last_detection_time = 0
         self.detection_cooldown = 2.0
         self.frame_counter = 0
-        self.frame_skip = 2  # Process every 3rd frame
+        self.frame_skip = 2
 
     def load_model(self, model_type):
         if model_type == self.model_type and self.model is not None:
@@ -99,7 +88,7 @@ class ObjectDetectionProcessor(VideoProcessorBase):
         
         img = frame.to_ndarray(format="bgr24")
         
-        # Frame skipping for performance
+        # Frame skipping
         self.frame_counter = (self.frame_counter + 1) % (self.frame_skip + 1)
         if self.frame_counter != 0:
             return av.VideoFrame.from_ndarray(img, format="bgr24")
@@ -124,7 +113,7 @@ class ObjectDetectionProcessor(VideoProcessorBase):
         # Audio feedback
         current_time = time.time()
         if detected_objects and current_time - self.last_detection_time > self.detection_cooldown:
-            audio_queue.put(f"Detected: {', '.join(detected_objects)}")
+            audio_system.queue.put(f"Detected: {', '.join(detected_objects)}")
             self.last_detection_time = current_time
         
         return av.VideoFrame.from_ndarray(img, format="bgr24")
@@ -143,10 +132,9 @@ def ocr_to_speech():
             
             if text.strip():
                 st.write("Extracted Text:", text)
-                audio_queue.put(text)
+                audio_system.queue.put(text)
             else:
                 st.warning("No text detected")
-                
         except Exception as e:
             st.error(f"OCR failed: {str(e)}")
 
@@ -160,21 +148,16 @@ def main():
         st.header("Object Detection")
         model_type = st.radio("Model:", ("indoor", "outdoor"), horizontal=True)
         
-        # Connection advice
-        with st.expander("ℹ️ Connection Tips"):
-            st.write("""
-            - Works best on Chrome/Firefox
-            - Allow camera permissions
-            - If connection fails, try:
-              - Refresh the page
-              - Switch networks (try mobile data)
-              - Disable VPN if using one
-            """)
-        
         webrtc_ctx = webrtc_streamer(
             key=f"detection-{model_type}",
             mode=WebRtcMode.SENDRECV,
-            rtc_configuration=get_rtc_config(),
+            rtc_configuration={
+                "iceServers": [
+                    {"urls": "stun:74.125.250.129:19302"},  # Your working IPv4
+                    {"urls": "stun:stun1.l.google.com:19302"},
+                    {"urls": "stun:stun2.l.google.com:19302"}
+                ]
+            },
             media_stream_constraints={
                 "video": {"width": 640, "height": 480},
                 "audio": False
@@ -185,16 +168,13 @@ def main():
         
         if webrtc_ctx.video_processor:
             webrtc_ctx.video_processor.load_model(model_type)
-        
-        if st.button("Reconnect Camera"):
-            st.experimental_rerun()
     
     with tab2:
         ocr_to_speech()
     
     # Cleanup
     if not st.session_state.get('_is_running', False):
-        audio_queue.put(None)
+        audio_system.queue.put(None)
         audio_thread.join(timeout=1.0)
         st.session_state._is_running = True
 
