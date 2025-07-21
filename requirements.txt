@@ -1,8 +1,8 @@
 streamlit
 streamlit-webrtc
-ultralytics==8.1.0
+ultralytics
 opencv-python-headless
 pillow
 pytesseract
-TTS
 av
+gtts
