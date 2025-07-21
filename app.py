@@ -6,7 +6,7 @@ import pytesseract
 from gtts import gTTS
 from ultralytics import YOLO
 import tempfile
-from streamlit_webrtc import WebRtcMode
+from streamlit_webrtc import WebRtcMode, VideoTransformerBase
 import av
 
 st.set_page_config(layout="wide")
