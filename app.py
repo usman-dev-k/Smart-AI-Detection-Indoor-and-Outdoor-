@@ -1,72 +1,91 @@
 import streamlit as st
 import cv2
-from PIL import Image
 import numpy as np
+from PIL import Image
 import pytesseract
 from gtts import gTTS
 from ultralytics import YOLO
 import tempfile
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+import av
 
-# Load YOLOv8 models
+st.set_page_config(layout="wide")
+st.title("📷 Smart Camera App")
+
+# Load models
 indoor_model = YOLO("indoor.pt")
 outdoor_model = YOLO("outdoor.pt")
 
-st.set_page_config(layout="wide")
-st.title("📷 Smart Camera App (Streamlit Cloud)")
-
-tab1, tab2 = st.tabs(["📦 Object Detection", "🔎 OCR + Text to Speech"])
-
-def detect_objects(image, model):
-    frame = np.array(image)
-    results = model(frame)
-    annotated_frame = results[0].plot()
-    labels = results[0].names
-    spoken = []
-
-    for box in results[0].boxes:
-        class_id = int(box.cls[0])
-        label = labels[class_id]
-        if label not in spoken:
-            spoken.append(label)
-
-    return annotated_frame, ", ".join(spoken)
-
+# Utility: TTS
 def text_to_speech(text):
     tts = gTTS(text)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
         tts.save(fp.name)
         return fp.name
 
-# Tab 1: Object Detection
+# -------- Object Detection Webcam --------
+class ObjectDetectionTransformer(VideoTransformerBase):
+    def __init__(self, model):
+        self.model = model
+        self.labels_spoken = []
+
+    def transform(self, frame):
+        img = frame.to_ndarray(format="bgr24")
+        results = self.model(img)
+        annotated = results[0].plot()
+
+        # Get spoken labels
+        labels = results[0].names
+        spoken = set()
+        for box in results[0].boxes:
+            class_id = int(box.cls[0])
+            spoken.add(labels[class_id])
+        self.labels_spoken = list(spoken)
+        return annotated
+
+# -------- OCR Snapshot --------
+def process_ocr_image(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    text = pytesseract.image_to_string(gray)
+    return text
+
+# ---------------- UI -------------------
+tab1, tab2 = st.tabs(["📦 Real-time Object Detection", "🔎 OCR from Camera"])
+
+# ---------- TAB 1: Real-Time Object Detection ----------
 with tab1:
-    st.header("Upload Image for Object Detection")
-    mode = st.selectbox("Select Detection Mode", ["Indoor", "Outdoor"])
-    uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"], key="upload_od")
+    st.subheader("Real-time Object Detection via Webcam")
+    model_choice = st.radio("Choose model", ["Indoor", "Outdoor"], horizontal=True)
+    selected_model = indoor_model if model_choice == "Indoor" else outdoor_model
 
-    if uploaded_file:
-        image = Image.open(uploaded_file).convert("RGB")
-        st.image(image, caption="Uploaded Image", use_column_width=True)
+    ctx = webrtc_streamer(
+        key="realtime-od",
+        video_transformer_factory=lambda: ObjectDetectionTransformer(selected_model),
+        media_stream_constraints={"video": True, "audio": False},
+        async_processing=True
+    )
 
-        model = indoor_model if mode == "Indoor" else outdoor_model
-        result_img, labels_text = detect_objects(image, model)
-        st.image(result_img, caption="Detected Objects", use_column_width=True)
-
-        if labels_text:
-            st.write("Detected:", labels_text)
-            audio_path = text_to_speech(labels_text)
+    if ctx.video_transformer:
+        spoken_labels = ctx.video_transformer.labels_spoken
+        if spoken_labels:
+            st.markdown("### Detected:")
+            label_str = ", ".join(spoken_labels)
+            st.write(label_str)
+            audio_path = text_to_speech(label_str)
             st.audio(audio_path)
 
-# Tab 2: OCR
+# ---------- TAB 2: OCR ----------
 with tab2:
-    st.header("Upload Image for OCR")
-    uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"], key="upload_ocr")
+    st.subheader("OCR from Camera Snapshot")
 
-    if uploaded_file:
-        image = Image.open(uploaded_file).convert("RGB")
-        st.image(image, caption="Uploaded Image", use_column_width=True)
+    image = st.camera_input("Take a photo")
 
-        text = pytesseract.image_to_string(image)
-        st.subheader("Extracted Text")
+    if image:
+        img = Image.open(image)
+        img_np = np.array(img)
+        text = process_ocr_image(img_np)
+
+        st.markdown("### Extracted Text:")
         st.text_area("Text", text, height=200)
 
         if text.strip():
