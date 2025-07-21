@@ -4,98 +4,71 @@ from PIL import Image
 import numpy as np
 import pytesseract
 from gtts import gTTS
-from playsound import playsound
-import tempfile
 from ultralytics import YOLO
-import time
+import tempfile
 
-# Load models
-indoor_model = YOLO("models/indoor.pt")
-outdoor_model = YOLO("models/outdoor.pt")
+# Load YOLOv8 models
+indoor_model = YOLO("indoor.pt")
+outdoor_model = YOLO("outdoor.pt")
 
-# Helper functions
-def speak_text(text):
-    if not text.strip():
-        return
-    tts = gTTS(text=text)
-    with tempfile.NamedTemporaryFile(delete=True, suffix=".mp3") as fp:
-        tts.save(fp.name)
-        playsound(fp.name)
-
-def detect_objects(frame, model):
-    results = model(frame)
-    for r in results:
-        boxes = r.boxes.xyxy
-        classes = r.boxes.cls
-        names = r.names
-        for i, box in enumerate(boxes):
-            x1, y1, x2, y2 = map(int, box)
-            label = names[int(classes[i])]
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-            speak_text(label)
-    return frame
-
-def run_ocr(image):
-    text = pytesseract.image_to_string(image)
-    return text
-
-# Streamlit UI
 st.set_page_config(layout="wide")
-st.title("Smart Camera App")
+st.title("📷 Smart Camera App (Streamlit Cloud)")
 
-tab1, tab2 = st.tabs(["📷 Real-Time Object Detection", "📖 OCR - Text to Speech"])
+tab1, tab2 = st.tabs(["📦 Object Detection", "🔎 OCR + Text to Speech"])
 
-# --- TAB 1: Object Detection ---
+def detect_objects(image, model):
+    frame = np.array(image)
+    results = model(frame)
+    annotated_frame = results[0].plot()
+    labels = results[0].names
+    spoken = []
+
+    for box in results[0].boxes:
+        class_id = int(box.cls[0])
+        label = labels[class_id]
+        if label not in spoken:
+            spoken.append(label)
+
+    return annotated_frame, ", ".join(spoken)
+
+def text_to_speech(text):
+    tts = gTTS(text)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
+        tts.save(fp.name)
+        return fp.name
+
+# Tab 1: Object Detection
 with tab1:
-    st.header("Real-Time Object Detection")
-    detection_mode = st.radio("Select Mode", ["Indoor", "Outdoor"])
+    st.header("Upload Image for Object Detection")
+    mode = st.selectbox("Select Detection Mode", ["Indoor", "Outdoor"])
+    uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"], key="upload_od")
 
-    start_camera = st.button("Start Detection")
+    if uploaded_file:
+        image = Image.open(uploaded_file).convert("RGB")
+        st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    if start_camera:
-        model = indoor_model if detection_mode == "Indoor" else outdoor_model
-        cap = cv2.VideoCapture(0)
+        model = indoor_model if mode == "Indoor" else outdoor_model
+        result_img, labels_text = detect_objects(image, model)
+        st.image(result_img, caption="Detected Objects", use_column_width=True)
 
-        st_frame = st.empty()
+        if labels_text:
+            st.write("Detected:", labels_text)
+            audio_path = text_to_speech(labels_text)
+            st.audio(audio_path)
 
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                st.error("Failed to access the webcam.")
-                break
-
-            frame = cv2.resize(frame, (640, 480))
-            frame = detect_objects(frame, model)
-            st_frame.image(frame, channels="BGR")
-
-            if st.button("Stop"):
-                cap.release()
-                break
-
-# --- TAB 2: OCR ---
+# Tab 2: OCR
 with tab2:
-    st.header("OCR - Click Image and Convert to Speech")
-    cap = cv2.VideoCapture(0)
-    st_camera = st.empty()
-    capture_btn = st.button("Click Picture")
+    st.header("Upload Image for OCR")
+    uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"], key="upload_ocr")
 
-    if cap.isOpened():
-        ret, frame = cap.read()
-        if ret:
-            st_camera.image(frame, channels="BGR")
+    if uploaded_file:
+        image = Image.open(uploaded_file).convert("RGB")
+        st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    if capture_btn:
-        if not ret:
-            st.error("Camera frame not available.")
-        else:
-            image = frame
-            st.image(image, caption="Captured Image", channels="BGR")
+        text = pytesseract.image_to_string(image)
+        st.subheader("Extracted Text")
+        st.text_area("Text", text, height=200)
 
-            text = run_ocr(image)
-            st.text_area("Detected Text", text, height=200)
-
-            st.success("Speaking Text...")
-            speak_text(text)
-
-    cap.release()
+        if text.strip():
+            audio_path = text_to_speech(text)
+            st.audio(audio_path)
