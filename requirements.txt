@@ -1,7 +1,7 @@
 streamlit
 streamlit-webrtc
 ultralytics
-opencv-python-headless==4.10.0.82
+opencv-python==4.10.0.82
 pillow
 pytesseract
 av
