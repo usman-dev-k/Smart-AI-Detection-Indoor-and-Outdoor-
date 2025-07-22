@@ -80,7 +80,7 @@ class ObjectDetectionProcessor(VideoProcessorBase):
         if self.frame_counter != 0:
             return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-        results = self.model.track(img, persist=True, verbose=False)
+        results = self.model.predict(img, persist=True, verbose=False)
         detected_now = set()
 
         for result in results:
