@@ -102,7 +102,19 @@ if app_mode == "🧍 Object Detection":
         video_processor_factory=VideoProcessor,
         media_stream_constraints={"video": True, "audio": False},
         async_processing=True,
-        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+        rtc_configuration = {
+            
+            "iceServers": [
+                {
+                    "urls": "stun:stun.l.google.com:19302"
+                },
+                {
+                    "urls": ["turn:global.turn.twilio.com:3478?transport=udp"],
+                    "username": "b9e6f8ff9be8b7303e3520570113cff848385c3c60b83b17adaab2e5a607385c",
+                    "credential": "ZT8h0y7ShKOWLmtyYH845iay2/w+0i0GNFVwZ73/1qw="
+                }
+            ]
+        },
     )
 
 # === OCR TO TTS MODE ===
