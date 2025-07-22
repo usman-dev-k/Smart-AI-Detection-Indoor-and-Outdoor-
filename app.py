@@ -1,158 +1,128 @@
-import os
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode, RTCConfiguration
-import av
 import cv2
 import numpy as np
+from PIL import Image, ImageEnhance
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
 from ultralytics import YOLO
-from PIL import Image
 import pytesseract
-import pyttsx3
-import threading
-import logging
+import tempfile
+import base64
+from gtts import gTTS
+import av
 
-# Disable noisy ALSA warnings
-os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
-os.environ['SDL_AUDIODRIVER'] = 'dummy'
+# === Load YOLO Models ===
+@st.cache_resource
+def load_models():
+    indoor_model = YOLO("indoor.pt")
+    outdoor_model = YOLO("outdoor.pt")
+    return indoor_model, outdoor_model
 
-# Logging setup
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+indoor_model, outdoor_model = load_models()
 
-# Tesseract path
-pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
+OUTDOOR_CLASS_NAMES = [
+    'Ambulance', 'Auto-Rikshaw', 'bike', 'bus', 'car',
+    'puddle', 'stairs', 'truck', 'van', 'zebra-crossing'
+]
 
-# YOLO model paths
-MODEL_DIR = "models"
-INDOOR_MODEL = os.path.join(MODEL_DIR, "indoor.pt")
-OUTDOOR_MODEL = os.path.join(MODEL_DIR, "outdoor.pt")
+# === OCR Preprocessing Function ===
+def preprocess_image(pil_image):
+    gray = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2GRAY)
+    gray = cv2.resize(gray, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_LINEAR)
+    blur = cv2.GaussianBlur(gray, (5, 5), 0)
+    thresh = cv2.adaptiveThreshold(
+        blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY, 11, 2
+    )
+    pil_thresh = Image.fromarray(thresh)
+    enhancer = ImageEnhance.Contrast(pil_thresh)
+    enhanced_image = enhancer.enhance(2.0)
+    return enhanced_image
 
-# RTC Configuration with TURN fallback
-RTC_CONFIG = RTCConfiguration({
-    "iceServers": [
-        {"urls": "stun:global.stun.twilio.com:3478"},
-        {
-            "urls": "turn:global.turn.twilio.com:3478?transport=udp",
-            "username": "b9e6f8ff9be8b7303e3520570113cff848385c3c60b83b17adaab2e5a607385c",  # <-- Your Twilio SID
-            "credential": "ZT8h0y7ShKOWLmtyYH845iay2/w+0i0GNFVwZ73/1qw="  # <-- Your Twilio Auth Token
-        }
-    ]
-})
-
-# Text-to-speech engine (runs in a thread to avoid blocking)
+# === Speak Text via gTTS ===
 def speak_text(text):
-    def _speak():
-        try:
-            engine = pyttsx3.init()
-            engine.say(text)
-            engine.runAndWait()
-        except Exception as e:
-            logger.error(f"TTS error: {str(e)}")
-    threading.Thread(target=_speak, daemon=True).start()
+    tts = gTTS(text=text, lang='en')
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmpfile:
+        tts.save(tmpfile.name)
+        tmpfile.seek(0)
+        audio_bytes = tmpfile.read()
+    b64 = base64.b64encode(audio_bytes).decode()
+    audio_html = f"""
+    <audio autoplay>
+        <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+    </audio>
+    """
+    st.markdown(audio_html, unsafe_allow_html=True)
 
-# Object detection video processor
-class ObjectDetectionProcessor(VideoProcessorBase):
-    def __init__(self):
-        self.model = None
-        self.model_type = None
-        self.frame_counter = 0
-        self.frame_skip = 2
-        self.last_detected = set()
+# === Streamlit UI ===
+st.set_page_config(page_title="Assistive App", layout="wide")
+st.title("🧠 Assistive Vision System")
 
-    def load_model(self, model_type):
-        if self.model_type != model_type:
-            try:
-                path = INDOOR_MODEL if model_type == "indoor" else OUTDOOR_MODEL
-                self.model = YOLO(path)
-                self.model_type = model_type
-                logger.info(f"{model_type} model loaded.")
-            except Exception as e:
-                logger.error(f"Failed to load model: {str(e)}")
-                self.model = None
+app_mode = st.sidebar.selectbox("Choose Mode", ["🧍 Object Detection", "🔠 OCR to TTS"])
 
-    def recv(self, frame):
-        if self.model is None:
-            return frame
+# === OBJECT DETECTION MODE ===
+if app_mode == "🧍 Object Detection":
+    env = st.radio("Select Environment:", ["Indoor", "Outdoor"])
+    model = indoor_model if env == "Indoor" else outdoor_model
+    class_names = model.names if env == "Indoor" else OUTDOOR_CLASS_NAMES
 
-        img = frame.to_ndarray(format="bgr24")
+    st.info(f"Running real-time object detection using the {env.lower()} model")
 
-        self.frame_counter = (self.frame_counter + 1) % (self.frame_skip + 1)
-        if self.frame_counter != 0:
+    class VideoProcessor(VideoProcessorBase):
+        def __init__(self):
+            self.last_sentence = ""
+
+        def recv(self, frame):
+            img = frame.to_ndarray(format="bgr24")
+            results = model.predict(source=img, conf=0.4)[0]
+            labels = []
+
+            for box in results.boxes:
+                cls_id = int(box.cls[0])
+                try:
+                    label = class_names[cls_id]
+                except IndexError:
+                    continue
+                labels.append(label)
+                xyxy = box.xyxy[0].int().tolist()
+                cv2.rectangle(img, (xyxy[0], xyxy[1]), (xyxy[2], xyxy[3]), (0, 255, 0), 2)
+                cv2.putText(img, label, (xyxy[0], xyxy[1] - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+
+            if labels:
+                sentence = " and ".join(set(labels)) + " ahead"
+                if sentence != self.last_sentence:
+                    self.last_sentence = sentence
+                    speak_text(sentence)
+
             return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-        results = self.model.predict(img, persist=True, verbose=False)
-        detected_now = set()
+    webrtc_streamer(
+        key="object-detect",
+        mode=WebRtcMode.SENDRECV,
+        video_processor_factory=VideoProcessor,
+        media_stream_constraints={"video": True, "audio": False},
+        async_processing=True,
+        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+    )
 
-        for result in results:
-            if result.boxes is not None:
-                for box, conf, cls_id in zip(result.boxes.xyxy.cpu().numpy(),
-                                             result.boxes.conf.cpu().numpy(),
-                                             result.boxes.cls.cpu().numpy().astype(int)):
-                    if conf > 0.5:
-                        label = self.model.names[cls_id]
-                        x1, y1, x2, y2 = map(int, box)
-                        cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                        cv2.putText(img, f"{label} {conf:.2f}", (x1, y1 - 10),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                        detected_now.add(label)
-
-        new_objects = detected_now - self.last_detected
-        if new_objects:
-            for obj in new_objects:
-                speak_text(f"{obj} detected")
-
-        self.last_detected = detected_now
-        return av.VideoFrame.from_ndarray(img, format="bgr24")
-
-# OCR & TTS
-def ocr_to_speech():
-    st.subheader("Capture Image for OCR")
-    img_file = st.camera_input("Take a photo")
+# === OCR TO TTS MODE ===
+elif app_mode == "🔠 OCR to TTS":
+    st.subheader("📷 Capture Image for OCR")
+    img_file = st.camera_input("Take a picture")
 
     if img_file:
-        try:
-            img = Image.open(img_file)
-            gray = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2GRAY)
-            _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            text = pytesseract.image_to_string(thresh)
-            st.write("Extracted Text:")
-            st.success(text.strip() if text.strip() else "No readable text found")
+        image = Image.open(img_file)
+        st.image(image, caption="Captured Image", use_column_width=True)
 
-            if text.strip():
-                speak_text(text.strip())
+        processed = preprocess_image(image)
+        st.image(processed, caption="Preprocessed Image", use_column_width=True)
 
-        except Exception as e:
-            logger.error(f"OCR error: {str(e)}")
-            st.error("Failed to process image.")
+        text = pytesseract.image_to_string(processed)
+        text = " ".join(text.split())
 
-# Main UI
-def main():
-    st.set_page_config(page_title="Object Detection & OCR App")
-    st.title("📸 Real-Time Object Detection & OCR to Speech")
-
-    tab1, tab2 = st.tabs(["🎯 Object Detection", "📝 OCR to Speech"])
-
-    with tab1:
-        st.header("Select Detection Mode")
-        model_type = st.radio("Choose Model", ("indoor", "outdoor"), horizontal=True)
-
-        webrtc_ctx = webrtc_streamer(
-            key=f"det-{model_type}",
-            mode=WebRtcMode.SENDRECV,
-            rtc_configuration=RTC_CONFIG,
-            media_stream_constraints={
-                "video": True,
-                "audio": False
-            },
-            video_processor_factory=ObjectDetectionProcessor,
-            async_processing=True,
-        )
-
-        if webrtc_ctx.video_processor:
-            webrtc_ctx.video_processor.load_model(model_type)
-
-    with tab2:
-        ocr_to_speech()
-
-if __name__ == "__main__":
-    main()
+        if text:
+            st.subheader("📝 Extracted Text")
+            st.success(text)
+            speak_text(text)
+        else:
+            st.warning("No text found in the image.")
