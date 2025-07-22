@@ -1,11 +1,9 @@
 streamlit
 streamlit-webrtc
-opencv-python-headless
-av
-numpy
 ultralytics
+opencv-python-headless
 pillow
 pytesseract
-pyttsx3
-lap
-
+gtts
+av
+numpy<2.0
