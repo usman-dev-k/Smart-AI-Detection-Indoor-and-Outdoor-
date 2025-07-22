@@ -1,7 +1,9 @@
-streamlit>=1.22
-streamlit-webrtc>=0.44
-ultralytics>=8.0
-opencv-python-headless>=4.7
-pytesseract>=0.3.10
-Pillow>=9.5
-numpy>=1.24
+streamlit
+streamlit-webrtc
+ultralytics
+opencv-python-headless
+pillow
+numpy
+pytesseract
+pyttsx3
+av
