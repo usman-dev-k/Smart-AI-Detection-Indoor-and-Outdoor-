@@ -7,3 +7,5 @@ ultralytics
 pillow
 pytesseract
 pyttsx3
+lap
+
