@@ -110,8 +110,8 @@ if app_mode == "🧍 Object Detection":
                 },
                 {
                     "urls": ["turn:global.turn.twilio.com:3478?transport=udp"],
-                    "username": "b9e6f8ff9be8b7303e3520570113cff848385c3c60b83b17adaab2e5a607385c",
-                    "credential": "ZT8h0y7ShKOWLmtyYH845iay2/w+0i0GNFVwZ73/1qw="
+                    "username": "07f6cb3dd2af9c9e7d573baaa6e68870d8c769d65a19774ab13db07a2bc10f2b",
+                    "credential": "ywuKM246n3aM7GnI74axW7CKXas3mfU4LjICerK1axI="
                 }
             ]
         },
