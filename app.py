@@ -4,11 +4,11 @@ import numpy as np
 from PIL import Image, ImageEnhance
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
 from ultralytics import YOLO
-import pytesseract
 import tempfile
 import base64
 from gtts import gTTS
 import av
+import easyocr  # ✅ Replaced pytesseract with EasyOCR
 
 # === Load YOLO Models ===
 @st.cache_resource
@@ -102,8 +102,7 @@ if app_mode == "🧍 Object Detection":
         video_processor_factory=VideoProcessor,
         media_stream_constraints={"video": True, "audio": False},
         async_processing=True,
-        rtc_configuration = {
-            
+        rtc_configuration={
             "iceServers": [
                 {
                     "urls": "stun:stun.l.google.com:19302"
@@ -129,8 +128,10 @@ elif app_mode == "🔠 OCR to TTS":
         processed = preprocess_image(image)
         st.image(processed, caption="Preprocessed Image", use_column_width=True)
 
-        text = pytesseract.image_to_string(processed)
-        text = " ".join(text.split())
+        # === Use EasyOCR instead of pytesseract ===
+        reader = easyocr.Reader(['en'], gpu=False)
+        results = reader.readtext(np.array(processed))
+        text = " ".join([res[1] for res in results])
 
         if text:
             st.subheader("📝 Extracted Text")
