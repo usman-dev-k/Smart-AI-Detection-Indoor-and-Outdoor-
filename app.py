@@ -8,7 +8,9 @@ import tempfile
 import base64
 from gtts import gTTS
 import av
-import easyocr  # ✅ Replaced pytesseract with EasyOCR
+import easyocr
+from playsound import playsound  # 🔊 For local speaker playback
+import os
 
 # === Load YOLO Models ===
 @st.cache_resource
@@ -38,13 +40,22 @@ def preprocess_image(pil_image):
     enhanced_image = enhancer.enhance(2.0)
     return enhanced_image
 
-# === Speak Text via gTTS ===
+# === Speak Text via gTTS + playsound + HTML Audio ===
 def speak_text(text):
     tts = gTTS(text=text, lang='en')
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmpfile:
         tts.save(tmpfile.name)
-        tmpfile.seek(0)
-        audio_bytes = tmpfile.read()
+        tmpfile_path = tmpfile.name
+
+    # 🔊 Play audio via system speaker (local use)
+    try:
+        playsound(tmpfile_path)
+    except Exception as e:
+        st.warning(f"Speaker playback error: {e}")
+
+    # 🎧 HTML playback for browser
+    with open(tmpfile_path, "rb") as f:
+        audio_bytes = f.read()
     b64 = base64.b64encode(audio_bytes).decode()
     audio_html = f"""
     <audio autoplay>
@@ -52,6 +63,9 @@ def speak_text(text):
     </audio>
     """
     st.markdown(audio_html, unsafe_allow_html=True)
+
+    # 🧹 Cleanup temp file
+    os.remove(tmpfile_path)
 
 # === Streamlit UI ===
 st.set_page_config(page_title="Assistive App", layout="wide")
@@ -128,7 +142,6 @@ elif app_mode == "🔠 OCR to TTS":
         processed = preprocess_image(image)
         st.image(processed, caption="Preprocessed Image", use_column_width=True)
 
-        # === Use EasyOCR instead of pytesseract ===
         reader = easyocr.Reader(['en'], gpu=False)
         results = reader.readtext(np.array(processed))
         text = " ".join([res[1] for res in results])
