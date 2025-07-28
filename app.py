@@ -10,6 +10,7 @@ from gtts import gTTS
 import av
 import easyocr
 import os
+import uuid
 
 # === Load YOLO Models ===
 @st.cache_resource
@@ -46,18 +47,20 @@ def speak_text(text):
         tts.save(tmpfile.name)
         tmpfile_path = tmpfile.name
 
-    # 🎧 HTML playback for browser/mobile
+    # Read audio and encode to base64
     with open(tmpfile_path, "rb") as f:
         audio_bytes = f.read()
     b64 = base64.b64encode(audio_bytes).decode()
+
+    # 🆕 Add unique ID to force reload in browser
+    unique_id = uuid.uuid4().hex
     audio_html = f"""
     <audio autoplay>
-        <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+        <source src="data:audio/mp3;base64,{b64}?v={unique_id}" type="audio/mp3">
     </audio>
     """
     st.markdown(audio_html, unsafe_allow_html=True)
 
-    # 🧹 Cleanup
     os.remove(tmpfile_path)
 
 # === Streamlit UI ===
