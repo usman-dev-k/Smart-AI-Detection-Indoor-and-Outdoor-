@@ -145,7 +145,7 @@ elif app_mode == "🔠 OCR to TTS":
             st.subheader("📝 Extracted Text")
             st.success(text)
 
-            if st.button("🔊 Play Audio"):
-                speak_text(text)
+            # 👇 Automatically speak the extracted text
+            speak_text(text)
         else:
             st.warning("No text found in the image.")
