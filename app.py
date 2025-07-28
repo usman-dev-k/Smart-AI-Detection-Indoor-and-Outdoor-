@@ -61,7 +61,7 @@ def speak_text(text):
 
     # Embed the audio with autoplay using JS
     audio_html = f"""
-    <audio id="auto-audio" autoplay controls style="width: 100%;">
+    <audio id="auto-audio" controls autoplay style="width: 100%;">
         <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
         Your browser does not support the audio element.
     </audio>
