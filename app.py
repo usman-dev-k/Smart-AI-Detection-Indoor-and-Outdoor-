@@ -9,8 +9,8 @@ import tempfile
 import base64
 from gtts import gTTS
 import av
-import os
 import streamlit.components.v1 as components
+import os
 
 # === Load YOLO Models ===
 @st.cache_resource
@@ -40,45 +40,33 @@ def preprocess_image(pil_image):
     enhanced_image = enhancer.enhance(2.0)
     return enhanced_image
 
-# === Speak Text via gTTS with JS Auto Play ===
-def speak_text(text):
-    from gtts import gTTS
-    import tempfile
-    import base64
-
-    # Generate speech audio
+# === Speak Text with Autoplay ===
+def speak_text(text, key="auto_audio"):
     tts = gTTS(text=text, lang='en')
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmpfile:
         tts.save(tmpfile.name)
         tmpfile_path = tmpfile.name
 
-    # Read and encode the audio
     with open(tmpfile_path, "rb") as f:
         audio_bytes = f.read()
 
     b64 = base64.b64encode(audio_bytes).decode()
     os.remove(tmpfile_path)
 
-    # Embed the audio with autoplay using JS
     audio_html = f"""
-    <audio id="auto-audio" controls autoplay style="width: 100%;">
-        <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
-        Your browser does not support the audio element.
-    </audio>
+    <button id="{key}" style="display:none;"></button>
+    <audio id="{key}-audio" src="data:audio/mp3;base64,{b64}"></audio>
     <script>
-        const audio = document.getElementById("auto-audio");
-        window.addEventListener("DOMContentLoaded", () => {{
-            setTimeout(() => {{
-                var playPromise = audio.play();
-                if (playPromise !== undefined) {{
-                    playPromise.then(_ => {{
-                        console.log("Audio playing...");
-                    }}).catch(error => {{
-                        console.log("Playback prevented:", error);
-                    }});
-                }}
-            }}, 300);
-        }});
+    const btn = document.getElementById("{key}");
+    const audio = document.getElementById("{key}-audio");
+    btn.onclick = function() {{
+        audio.play();
+    }};
+    window.addEventListener("load", () => {{
+        setTimeout(() => {{
+            btn.click();
+        }}, 300);
+    }});
     </script>
     """
     components.html(audio_html, height=0)
@@ -132,11 +120,9 @@ if app_mode == "🧍 Object Detection":
         video_processor_factory=VideoProcessor,
         media_stream_constraints={"video": True, "audio": False},
         async_processing=True,
-        rtc_configuration = {
+        rtc_configuration={
             "iceServers": [
-                {
-                    "urls": "stun:stun.l.google.com:19302"
-                },
+                {"urls": "stun:stun.l.google.com:19302"},
                 {
                     "urls": ["turn:global.turn.twilio.com:3478?transport=udp"],
                     "username": "639ba3edc066015ca20be3d3f5780fc64343c76b3086fabda0530355a2ce0e45",
@@ -165,6 +151,8 @@ elif app_mode == "🔠 OCR to TTS":
         if text:
             st.subheader("📝 Extracted Text")
             st.success(text)
+
+            # Auto-play the spoken text
             speak_text(text)
         else:
             st.warning("No text found in the image.")
