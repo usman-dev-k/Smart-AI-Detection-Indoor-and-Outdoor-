@@ -10,7 +10,6 @@ import base64
 from gtts import gTTS
 import av
 import os
-import streamlit.components.v1 as components
 
 # === Load YOLO Models ===
 @st.cache_resource
@@ -26,7 +25,7 @@ OUTDOOR_CLASS_NAMES = [
     'puddle', 'stairs', 'truck', 'van', 'zebra-crossing'
 ]
 
-# === OCR Preprocessing Function ===
+# === OCR Preprocessing ===
 def preprocess_image(pil_image):
     gray = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2GRAY)
     gray = cv2.resize(gray, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_LINEAR)
@@ -40,33 +39,25 @@ def preprocess_image(pil_image):
     enhanced_image = enhancer.enhance(2.0)
     return enhanced_image
 
-# === Speak Text via gTTS with JS Auto Play ===
-def speak_text(text):
+# === Generate Audio Bar (No Autoplay) ===
+def show_audio_bar(text):
     tts = gTTS(text=text, lang='en')
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmpfile:
         tts.save(tmpfile.name)
-        tmpfile_path = tmpfile.name
+        audio_path = tmpfile.name
 
-    with open(tmpfile_path, "rb") as f:
+    with open(audio_path, "rb") as f:
         audio_bytes = f.read()
-
     b64 = base64.b64encode(audio_bytes).decode()
+    os.remove(audio_path)
 
-    # JS to auto play the audio
     audio_html = f"""
-    <audio id="tts-audio" autoplay>
+    <audio controls>
         <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+        Your browser does not support the audio element.
     </audio>
-    <script>
-        var audio = document.getElementById("tts-audio");
-        setTimeout(function() {{
-            audio.play().catch(e => console.log("Auto-play prevented:", e));
-        }}, 500);
-    </script>
     """
-    components.html(audio_html, height=0)
-
-    os.remove(tmpfile_path)
+    st.markdown(audio_html, unsafe_allow_html=True)
 
 # === Streamlit UI ===
 st.set_page_config(page_title="Assistive App", layout="wide")
@@ -107,7 +98,7 @@ if app_mode == "🧍 Object Detection":
                 sentence = " and ".join(set(labels)) + " ahead"
                 if sentence != self.last_sentence:
                     self.last_sentence = sentence
-                    speak_text(sentence)
+                    show_audio_bar(sentence)
 
             return av.VideoFrame.from_ndarray(img, format="bgr24")
 
@@ -117,11 +108,9 @@ if app_mode == "🧍 Object Detection":
         video_processor_factory=VideoProcessor,
         media_stream_constraints={"video": True, "audio": False},
         async_processing=True,
-        rtc_configuration = {
+        rtc_configuration={
             "iceServers": [
-                {
-                    "urls": "stun:stun.l.google.com:19302"
-                },
+                {"urls": "stun:stun.l.google.com:19302"},
                 {
                     "urls": ["turn:global.turn.twilio.com:3478?transport=udp"],
                     "username": "639ba3edc066015ca20be3d3f5780fc64343c76b3086fabda0530355a2ce0e45",
@@ -150,6 +139,8 @@ elif app_mode == "🔠 OCR to TTS":
         if text:
             st.subheader("📝 Extracted Text")
             st.success(text)
-            speak_text(text)
+
+            # Show audio bar for manual play
+            show_audio_bar(text)
         else:
             st.warning("No text found in the image.")
