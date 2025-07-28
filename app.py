@@ -52,20 +52,17 @@ def speak_text(text):
 
     b64 = base64.b64encode(audio_bytes).decode()
 
-    # JS to auto play the audio
     audio_html = f"""
-    <audio id="tts-audio" autoplay>
+    <audio id="tts-audio" controls autoplay style="width: 100%;">
         <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+        Your browser does not support the audio element.
     </audio>
     <script>
-        var audio = document.getElementById("tts-audio");
-        setTimeout(function() {{
-            audio.play().catch(e => console.log("Auto-play prevented:", e));
-        }}, 500);
+        const audio = document.getElementById("tts-audio");
+        audio.play().catch(e => console.log("Autoplay issue:", e));
     </script>
     """
-    components.html(audio_html, height=0)
-
+    components.html(audio_html, height=70)
     os.remove(tmpfile_path)
 
 # === Streamlit UI ===
