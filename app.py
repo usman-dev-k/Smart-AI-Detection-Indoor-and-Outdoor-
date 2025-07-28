@@ -42,28 +42,46 @@ def preprocess_image(pil_image):
 
 # === Speak Text via gTTS with JS Auto Play ===
 def speak_text(text):
+    from gtts import gTTS
+    import tempfile
+    import base64
+
+    # Generate speech audio
     tts = gTTS(text=text, lang='en')
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmpfile:
         tts.save(tmpfile.name)
         tmpfile_path = tmpfile.name
 
+    # Read and encode the audio
     with open(tmpfile_path, "rb") as f:
         audio_bytes = f.read()
 
     b64 = base64.b64encode(audio_bytes).decode()
+    os.remove(tmpfile_path)
 
+    # Embed the audio with autoplay using JS
     audio_html = f"""
-    <audio id="tts-audio" controls autoplay style="width: 100%;">
+    <audio id="auto-audio" autoplay controls style="width: 100%;">
         <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
         Your browser does not support the audio element.
     </audio>
     <script>
-        const audio = document.getElementById("tts-audio");
-        audio.play().catch(e => console.log("Autoplay issue:", e));
+        const audio = document.getElementById("auto-audio");
+        window.addEventListener("DOMContentLoaded", () => {{
+            setTimeout(() => {{
+                var playPromise = audio.play();
+                if (playPromise !== undefined) {{
+                    playPromise.then(_ => {{
+                        console.log("Audio playing...");
+                    }}).catch(error => {{
+                        console.log("Playback prevented:", error);
+                    }});
+                }}
+            }}, 300);
+        }});
     </script>
     """
-    components.html(audio_html, height=70)
-    os.remove(tmpfile_path)
+    components.html(audio_html, height=0)
 
 # === Streamlit UI ===
 st.set_page_config(page_title="Assistive App", layout="wide")
