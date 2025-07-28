@@ -10,7 +10,6 @@ from gtts import gTTS
 import av
 import easyocr
 import os
-import uuid
 
 # === Load YOLO Models ===
 @st.cache_resource
@@ -40,23 +39,23 @@ def preprocess_image(pil_image):
     enhanced_image = enhancer.enhance(2.0)
     return enhanced_image
 
-# === Speak Text via gTTS and HTML (No playsound) ===
+# === Speak Text via gTTS with visible audio player (no autoplay) ===
 def speak_text(text):
     tts = gTTS(text=text, lang='en')
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmpfile:
         tts.save(tmpfile.name)
         tmpfile_path = tmpfile.name
 
-    # Read audio and encode to base64
+    # Read and encode to base64
     with open(tmpfile_path, "rb") as f:
         audio_bytes = f.read()
     b64 = base64.b64encode(audio_bytes).decode()
 
-    # 🆕 Add unique ID to force reload in browser
-    unique_id = uuid.uuid4().hex
+    # Display audio player (manual play)
     audio_html = f"""
-    <audio autoplay>
-        <source src="data:audio/mp3;base64,{b64}?v={unique_id}" type="audio/mp3">
+    <audio controls>
+        <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+        Your browser does not support the audio element.
     </audio>
     """
     st.markdown(audio_html, unsafe_allow_html=True)
@@ -145,6 +144,8 @@ elif app_mode == "🔠 OCR to TTS":
         if text:
             st.subheader("📝 Extracted Text")
             st.success(text)
-            speak_text(text)
+
+            if st.button("🔊 Play Audio"):
+                speak_text(text)
         else:
             st.warning("No text found in the image.")
