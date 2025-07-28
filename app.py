@@ -9,7 +9,6 @@ import base64
 from gtts import gTTS
 import av
 import easyocr
-from playsound import playsound  # 🔊 For local speaker playback
 import os
 
 # === Load YOLO Models ===
@@ -40,20 +39,14 @@ def preprocess_image(pil_image):
     enhanced_image = enhancer.enhance(2.0)
     return enhanced_image
 
-# === Speak Text via gTTS + playsound + HTML Audio ===
+# === Speak Text via gTTS and HTML (No playsound) ===
 def speak_text(text):
     tts = gTTS(text=text, lang='en')
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmpfile:
         tts.save(tmpfile.name)
         tmpfile_path = tmpfile.name
 
-    # 🔊 Play audio via system speaker (local use)
-    try:
-        playsound(tmpfile_path)
-    except Exception as e:
-        st.warning(f"Speaker playback error: {e}")
-
-    # 🎧 HTML playback for browser
+    # 🎧 HTML playback for browser/mobile
     with open(tmpfile_path, "rb") as f:
         audio_bytes = f.read()
     b64 = base64.b64encode(audio_bytes).decode()
@@ -64,7 +57,7 @@ def speak_text(text):
     """
     st.markdown(audio_html, unsafe_allow_html=True)
 
-    # 🧹 Cleanup temp file
+    # 🧹 Cleanup
     os.remove(tmpfile_path)
 
 # === Streamlit UI ===
