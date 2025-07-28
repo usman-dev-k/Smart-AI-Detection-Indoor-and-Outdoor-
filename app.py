@@ -4,11 +4,11 @@ import numpy as np
 from PIL import Image, ImageEnhance
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
 from ultralytics import YOLO
+import easyocr
 import tempfile
 import base64
 from gtts import gTTS
 import av
-import easyocr
 import os
 import streamlit.components.v1 as components
 
@@ -40,26 +40,31 @@ def preprocess_image(pil_image):
     enhanced_image = enhancer.enhance(2.0)
     return enhanced_image
 
-# === Speak Text via gTTS with visible audio player (no autoplay) ===
+# === Speak Text via gTTS with JS Auto Play ===
 def speak_text(text):
     tts = gTTS(text=text, lang='en')
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmpfile:
         tts.save(tmpfile.name)
         tmpfile_path = tmpfile.name
 
-    # Read and encode to base64
     with open(tmpfile_path, "rb") as f:
         audio_bytes = f.read()
+
     b64 = base64.b64encode(audio_bytes).decode()
 
-    # Display audio player (manual play)
+    # JS to auto play the audio
     audio_html = f"""
-    <audio controls>
+    <audio id="tts-audio" autoplay>
         <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
-        Your browser does not support the audio element.
     </audio>
+    <script>
+        var audio = document.getElementById("tts-audio");
+        setTimeout(function() {{
+            audio.play().catch(e => console.log("Auto-play prevented:", e));
+        }}, 500);
+    </script>
     """
-    st.markdown(audio_html, unsafe_allow_html=True)
+    components.html(audio_html, height=0)
 
     os.remove(tmpfile_path)
 
@@ -112,7 +117,7 @@ if app_mode == "🧍 Object Detection":
         video_processor_factory=VideoProcessor,
         media_stream_constraints={"video": True, "audio": False},
         async_processing=True,
-        rtc_configuration={
+        rtc_configuration = {
             "iceServers": [
                 {
                     "urls": "stun:stun.l.google.com:19302"
@@ -127,31 +132,24 @@ if app_mode == "🧍 Object Detection":
     )
 
 # === OCR TO TTS MODE ===
-def speak_text(text):
-    tts = gTTS(text=text, lang='en')
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmpfile:
-        tts.save(tmpfile.name)
-        tmpfile_path = tmpfile.name
+elif app_mode == "🔠 OCR to TTS":
+    st.subheader("📷 Capture Image for OCR")
+    img_file = st.camera_input("Take a picture")
 
-    with open(tmpfile_path, "rb") as f:
-        audio_bytes = f.read()
+    if img_file:
+        image = Image.open(img_file)
+        st.image(image, caption="Captured Image", use_column_width=True)
 
-    b64 = base64.b64encode(audio_bytes).decode()
+        processed = preprocess_image(image)
+        st.image(processed, caption="Preprocessed Image", use_column_width=True)
 
-    # 🔊 Use JS to auto-play audio
-    audio_html = f"""
-    <audio id="tts-audio" autoplay>
-        <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
-    </audio>
-    <script>
-        var audio = document.getElementById("tts-audio");
-        window.addEventListener("load", function() {{
-            setTimeout(function() {{
-                audio.play().catch(e => console.log("Auto-play prevented:", e));
-            }}, 500);
-        }});
-    </script>
-    """
-    components.html(audio_html, height=0)
+        reader = easyocr.Reader(['en'], gpu=False)
+        results = reader.readtext(np.array(processed))
+        text = " ".join([res[1] for res in results])
 
-    os.remove(tmpfile_path)
+        if text:
+            st.subheader("📝 Extracted Text")
+            st.success(text)
+            speak_text(text)
+        else:
+            st.warning("No text found in the image.")
