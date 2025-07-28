@@ -74,33 +74,41 @@ if app_mode == "🧍 Object Detection":
     st.info(f"Running real-time object detection using the {env.lower()} model")
 
     class VideoProcessor(VideoProcessorBase):
-        def __init__(self):
-            self.last_sentence = ""
+    def __init__(self):
+        self.last_sentence = ""
+        self.last_labels = {}
 
-        def recv(self, frame):
-            img = frame.to_ndarray(format="bgr24")
-            results = model.predict(source=img, conf=0.4)[0]
-            labels = []
+    def recv(self, frame):
+        img = frame.to_ndarray(format="bgr24")
+        results = model.predict(source=img, conf=0.4)[0]
+        detected = {}
 
-            for box in results.boxes:
-                cls_id = int(box.cls[0])
-                try:
-                    label = class_names[cls_id]
-                except IndexError:
-                    continue
-                labels.append(label)
-                xyxy = box.xyxy[0].int().tolist()
-                cv2.rectangle(img, (xyxy[0], xyxy[1]), (xyxy[2], xyxy[3]), (0, 255, 0), 2)
-                cv2.putText(img, label, (xyxy[0], xyxy[1] - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        for box in results.boxes:
+            cls_id = int(box.cls[0])
+            try:
+                label = class_names[cls_id]
+            except IndexError:
+                continue
 
-            if labels:
-                sentence = " and ".join(set(labels)) + " ahead"
-                if sentence != self.last_sentence:
-                    self.last_sentence = sentence
-                    show_audio_bar(sentence)
+            detected[label] = detected.get(label, 0) + 1
+            xyxy = box.xyxy[0].int().tolist()
+            cv2.rectangle(img, (xyxy[0], xyxy[1]), (xyxy[2], xyxy[3]), (0, 255, 0), 2)
+            cv2.putText(img, label, (xyxy[0], xyxy[1] - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
-            return av.VideoFrame.from_ndarray(img, format="bgr24")
+        # Create sentence
+        if detected:
+            sentence_parts = []
+            for label, count in detected.items():
+                label_display = f"{count} {label}" if count == 1 else f"{count} {label}s"
+                sentence_parts.append(label_display)
+            sentence = " and ".join(sentence_parts) + " ahead"
+
+            if sentence != self.last_sentence:
+                self.last_sentence = sentence
+                speak_text(sentence)
+
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
 
     webrtc_streamer(
         key="object-detect",
