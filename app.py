@@ -9,8 +9,8 @@ import tempfile
 import base64
 from gtts import gTTS
 import av
-import streamlit.components.v1 as components
 import os
+import streamlit.components.v1 as components
 
 # === Load YOLO Models ===
 @st.cache_resource
@@ -40,8 +40,8 @@ def preprocess_image(pil_image):
     enhanced_image = enhancer.enhance(2.0)
     return enhanced_image
 
-# === Speak Text with Autoplay ===
-def speak_text(text, key="auto_audio"):
+# === Speak Text via gTTS with JS Auto Play ===
+def speak_text(text):
     tts = gTTS(text=text, lang='en')
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmpfile:
         tts.save(tmpfile.name)
@@ -51,25 +51,22 @@ def speak_text(text, key="auto_audio"):
         audio_bytes = f.read()
 
     b64 = base64.b64encode(audio_bytes).decode()
-    os.remove(tmpfile_path)
 
+    # JS to auto play the audio
     audio_html = f"""
-    <button id="{key}" style="display:none;"></button>
-    <audio id="{key}-audio" src="data:audio/mp3;base64,{b64}"></audio>
+    <audio id="tts-audio" autoplay>
+        <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+    </audio>
     <script>
-    const btn = document.getElementById("{key}");
-    const audio = document.getElementById("{key}-audio");
-    btn.onclick = function() {{
-        audio.play();
-    }};
-    window.addEventListener("load", () => {{
-        setTimeout(() => {{
-            btn.click();
-        }}, 300);
-    }});
+        var audio = document.getElementById("tts-audio");
+        setTimeout(function() {{
+            audio.play().catch(e => console.log("Auto-play prevented:", e));
+        }}, 500);
     </script>
     """
     components.html(audio_html, height=0)
+
+    os.remove(tmpfile_path)
 
 # === Streamlit UI ===
 st.set_page_config(page_title="Assistive App", layout="wide")
@@ -120,9 +117,11 @@ if app_mode == "🧍 Object Detection":
         video_processor_factory=VideoProcessor,
         media_stream_constraints={"video": True, "audio": False},
         async_processing=True,
-        rtc_configuration={
+        rtc_configuration = {
             "iceServers": [
-                {"urls": "stun:stun.l.google.com:19302"},
+                {
+                    "urls": "stun:stun.l.google.com:19302"
+                },
                 {
                     "urls": ["turn:global.turn.twilio.com:3478?transport=udp"],
                     "username": "639ba3edc066015ca20be3d3f5780fc64343c76b3086fabda0530355a2ce0e45",
@@ -151,8 +150,6 @@ elif app_mode == "🔠 OCR to TTS":
         if text:
             st.subheader("📝 Extracted Text")
             st.success(text)
-
-            # Auto-play the spoken text
             speak_text(text)
         else:
             st.warning("No text found in the image.")
