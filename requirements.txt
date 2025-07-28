@@ -7,3 +7,4 @@ gtts
 av
 numpy<2.0
 easyocr
+playsound==1.2.2
