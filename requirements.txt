@@ -3,7 +3,7 @@ streamlit-webrtc
 ultralytics
 opencv-python-headless
 pillow
-pytesseract
 gtts
 av
 numpy<2.0
+easyocr
