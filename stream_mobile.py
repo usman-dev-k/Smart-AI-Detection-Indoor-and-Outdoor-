@@ -3,7 +3,7 @@ from ultralytics import YOLO
 
 @st.cache_resource
 def load_model():
-    model_path = "models/weapon.pt"
+    model_path = "models/indoor.pt"
     try:
         model = YOLO(model_path)
         st.success("✅ Model loaded successfully!")
