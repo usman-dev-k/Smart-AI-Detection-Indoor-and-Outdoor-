@@ -96,9 +96,10 @@ Then open your browser at `http://localhost:8501`.
 
 ## 📷 Screenshots
 
-| Object Detection                                 | OCR to TTS                     |
-| ------------------------------------------------ | ------------------------------ |
-| ![object-detection](assets/object-detection.png) | ![ocr-tts](assets/ocr-tts.png) |
+| ------------------------------------------------ |
+| (assets/1.jpeg)
+| (assets/2.jpeg)
+| (assets/3.jpeg)
 
 ---
 
