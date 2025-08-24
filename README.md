@@ -96,9 +96,11 @@ Then open your browser at `http://localhost:8501`.
 
 ## 📷 Screenshots
 
-| ![](assets/1.jpeg)
-| ![](assets/2.jpeg)
-| ![](assets/3.jpeg)
+<p float="left">
+  <img src="assets/1.jpeg" width="250" />
+  <img src="assets/2.jpeg" width="250" />
+  <img src="assets/3.jpeg" width="250" />
+</p>
 
 ---
 
